@@ -1,80 +1,137 @@
 'use client'
 
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { supabase } from '@/lib/supabase'
-import { ArrowLeft, Upload, CheckCircle, AlertCircle, Info } from 'lucide-react'
+import { ArrowLeft, Upload, CheckCircle, AlertCircle, Info, FileSpreadsheet, X } from 'lucide-react'
 import Link from 'next/link'
 import { useParams } from 'next/navigation'
 import Papa from 'papaparse'
+import * as XLSX from 'xlsx'
+
+type ParsedRow = string[]
+
+function parseRows(rows: ParsedRow[]): { toInsert: object[]; errors: number } {
+  const isHeader =
+    rows[0]?.[0]?.toLowerCase().includes('pergunta') ||
+    rows[0]?.[0]?.toLowerCase().includes('questão') ||
+    rows[0]?.[0]?.toLowerCase().includes('question')
+  const dataRows = isHeader ? rows.slice(1) : rows
+
+  let errors = 0
+  const toInsert: object[] = []
+  for (const row of dataRows) {
+    const question = row[0]?.trim()
+    const correct = row[row.length - 1]?.trim()
+    if (!question || !correct || row.length < 4) { errors++; continue }
+    toInsert.push({
+      question,
+      option_a: row[1]?.trim() || null,
+      explanation_a: row[2]?.trim() || null,
+      option_b: row[3]?.trim() || null,
+      explanation_b: row[4]?.trim() || null,
+      option_c: row[5]?.trim() || null,
+      explanation_c: row[6]?.trim() || null,
+      option_d: row[7]?.trim() || null,
+      explanation_d: row[8]?.trim() || null,
+      option_e: row[9]?.trim() || null,
+      explanation_e: row[10]?.trim() || null,
+      correct_answer: correct,
+    })
+  }
+  return { toInsert, errors }
+}
 
 export default function ImportQuestionsPage() {
   const { id } = useParams<{ id: string }>()
   const [text, setText] = useState('')
+  const [file, setFile] = useState<File | null>(null)
   const [importing, setImporting] = useState(false)
   const [result, setResult] = useState<{ success: number; errors: number } | null>(null)
   const [error, setError] = useState('')
+  const [preview, setPreview] = useState<ParsedRow[]>([])
+  const fileRef = useRef<HTMLInputElement>(null)
+
+  function readExcel(f: File): Promise<ParsedRow[]> {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = (e) => {
+        try {
+          const data = new Uint8Array(e.target!.result as ArrayBuffer)
+          const wb = XLSX.read(data, { type: 'array' })
+          const ws = wb.Sheets[wb.SheetNames[0]]
+          const rows: ParsedRow[] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' }) as ParsedRow[]
+          resolve(rows.filter((r) => r.some((c) => c?.toString().trim())))
+        } catch (err) { reject(err) }
+      }
+      reader.onerror = reject
+      reader.readAsArrayBuffer(f)
+    })
+  }
+
+  async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const f = e.target.files?.[0]
+    if (!f) return
+    setFile(f)
+    setResult(null)
+    setError('')
+    try {
+      let rows: ParsedRow[]
+      if (f.name.endsWith('.csv')) {
+        const text = await f.text()
+        const parsed = Papa.parse<ParsedRow>(text, { skipEmptyLines: true })
+        rows = parsed.data
+      } else {
+        rows = await readExcel(f)
+      }
+      setPreview(rows.slice(0, 4))
+      setText('') // clear manual text when file is loaded
+    } catch {
+      setError('Erro ao ler o arquivo. Verifique se é um Excel ou CSV válido.')
+    }
+  }
+
+  function clearFile() {
+    setFile(null)
+    setPreview([])
+    if (fileRef.current) fileRef.current.value = ''
+  }
 
   async function handleImport() {
-    if (!text.trim()) return
     setImporting(true)
     setError('')
     setResult(null)
 
     try {
-      const parsed = Papa.parse<string[]>(text.trim(), {
-        delimiter: '\t',
-        skipEmptyLines: true,
-      })
+      let rows: ParsedRow[] = []
 
-      const rows = parsed.data
-      // Check if first row is header
-      const firstRow = rows[0]
-      const isHeader = firstRow[0]?.toLowerCase().includes('pergunta') ||
-        firstRow[0]?.toLowerCase().includes('questão') ||
-        firstRow[0]?.toLowerCase().includes('question')
-
-      const dataRows = isHeader ? rows.slice(1) : rows
-
-      let success = 0
-      let errors = 0
-
-      const toInsert = dataRows.map((row) => {
-        // Expected: pergunta | opA | expA | opB | expB | opC | expC | opD | expD | opE | expE | resposta
-        if (row.length < 4) { errors++; return null }
-        const question = row[0]?.trim()
-        const correct = row[row.length - 1]?.trim()
-        if (!question || !correct) { errors++; return null }
-        return {
-          notebook_id: id,
-          question,
-          option_a: row[1]?.trim() || null,
-          explanation_a: row[2]?.trim() || null,
-          option_b: row[3]?.trim() || null,
-          explanation_b: row[4]?.trim() || null,
-          option_c: row[5]?.trim() || null,
-          explanation_c: row[6]?.trim() || null,
-          option_d: row[7]?.trim() || null,
-          explanation_d: row[8]?.trim() || null,
-          option_e: row[9]?.trim() || null,
-          explanation_e: row[10]?.trim() || null,
-          correct_answer: correct,
+      if (file) {
+        if (file.name.endsWith('.csv')) {
+          const t = await file.text()
+          rows = Papa.parse<ParsedRow>(t, { skipEmptyLines: true }).data
+        } else {
+          rows = await readExcel(file)
         }
-      }).filter(Boolean)
+      } else if (text.trim()) {
+        rows = Papa.parse<ParsedRow>(text.trim(), { delimiter: '\t', skipEmptyLines: true }).data
+      } else return
 
+      const { toInsert, errors } = parseRows(rows)
       if (toInsert.length > 0) {
-        const { error: insertError } = await supabase.from('questions').insert(toInsert as any[])
+        const withId = toInsert.map((r) => ({ ...r, notebook_id: id }))
+        const { error: insertError } = await supabase.from('questions').insert(withId)
         if (insertError) throw new Error(insertError.message)
-        success = toInsert.length
       }
-
-      setResult({ success, errors })
-      if (success > 0) setText('')
+      setResult({ success: toInsert.length, errors })
+      setText('')
+      clearFile()
     } catch (err: any) {
       setError(err.message)
     } finally {
       setImporting(false)
     }
   }
+
+  const hasData = file !== null || text.trim().length > 0
 
   return (
     <div className="min-h-screen bg-slate-950">
@@ -85,7 +142,7 @@ export default function ImportQuestionsPage() {
           </Link>
           <div>
             <h1 className="text-base font-semibold text-white">Importar Questões</h1>
-            <p className="text-xs text-slate-400">Cole os dados no formato tabela (TSV)</p>
+            <p className="text-xs text-slate-400">Excel, CSV ou cole no formato tabela</p>
           </div>
         </div>
       </header>
@@ -96,42 +153,105 @@ export default function ImportQuestionsPage() {
           <div className="flex items-start gap-2">
             <Info size={16} className="text-blue-400 flex-shrink-0 mt-0.5" />
             <div>
-              <p className="text-sm font-medium text-blue-300 mb-1">Formato esperado (separado por tabulação)</p>
+              <p className="text-sm font-medium text-blue-300 mb-1">Colunas esperadas (em ordem)</p>
               <p className="text-xs text-blue-400 font-mono leading-relaxed">
                 pergunta | opção_A | explicação_A | opção_B | explicação_B | opção_C | explicação_C | opção_D | explicação_D | opção_E | explicação_E | resposta_correta
               </p>
               <p className="text-xs text-blue-400 mt-2">
-                • A primeira linha pode ser cabeçalho (será ignorada automaticamente)<br />
-                • opção_E e sua explicação são opcionais<br />
-                • resposta_correta deve ser A, B, C, D ou E<br />
-                • Copie direto do Excel/Google Sheets ou cole separado por tab
+                • A primeira linha pode ser cabeçalho (ignorada automaticamente)<br />
+                • opção_E e explicação_E são opcionais • resposta_correta: A, B, C, D ou E
               </p>
             </div>
           </div>
         </div>
 
-        {/* Textarea */}
+        {/* File upload area */}
         <div className="mb-4">
-          <label className="block text-sm font-medium text-slate-300 mb-2">
-            Cole os dados aqui
-          </label>
-          <textarea
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            placeholder={`pergunta\topção A\texplicação A\topção B\texplicação B\topção C\texplicação C\topção D\texplicação D\tresposta correta\nQual o potencial de repouso da célula?\t-70 mV\tValor típico de repouso\t-40 mV\tValor de limiar\t+40 mV\tPico do PA\t0 mV\tNão é valor típico\tA`}
-            rows={14}
-            className="w-full bg-slate-900 border border-slate-700 text-slate-200 placeholder-slate-600 rounded-xl px-4 py-3 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent resize-none"
-          />
-          <p className="text-xs text-slate-500 mt-1.5">
-            {text.trim() ? `${text.trim().split('\n').filter(Boolean).length} linha(s)` : 'Vazio'}
-          </p>
+          <label className="block text-sm font-medium text-slate-300 mb-2">Arquivo Excel ou CSV</label>
+          {file ? (
+            <div className="flex items-center gap-3 bg-slate-800 border border-slate-700 rounded-xl px-4 py-3">
+              <FileSpreadsheet size={20} className="text-emerald-400 flex-shrink-0" />
+              <div className="flex-1 min-w-0">
+                <p className="text-sm text-white font-medium truncate">{file.name}</p>
+                <p className="text-xs text-slate-400">{(file.size / 1024).toFixed(1)} KB</p>
+              </div>
+              <button onClick={clearFile} className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-700 rounded-lg transition-colors">
+                <X size={15} />
+              </button>
+            </div>
+          ) : (
+            <label className="flex flex-col items-center justify-center gap-2 bg-slate-900 border-2 border-dashed border-slate-700 hover:border-indigo-500 hover:bg-slate-800/50 rounded-xl px-4 py-8 cursor-pointer transition-all group">
+              <FileSpreadsheet size={28} className="text-slate-500 group-hover:text-indigo-400 transition-colors" />
+              <div className="text-center">
+                <p className="text-sm text-slate-300 font-medium">Clique para selecionar o arquivo</p>
+                <p className="text-xs text-slate-500 mt-0.5">.xlsx, .xls ou .csv</p>
+              </div>
+              <input
+                ref={fileRef}
+                type="file"
+                accept=".xlsx,.xls,.csv"
+                className="hidden"
+                onChange={handleFileChange}
+              />
+            </label>
+          )}
         </div>
+
+        {/* Preview */}
+        {preview.length > 0 && (
+          <div className="mb-4 bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
+            <p className="text-xs font-medium text-slate-400 px-4 py-2 border-b border-slate-800">
+              Pré-visualização (primeiras {preview.length} linhas)
+            </p>
+            <div className="overflow-x-auto">
+              <table className="text-xs w-full">
+                <tbody>
+                  {preview.map((row, i) => (
+                    <tr key={i} className={i === 0 ? 'bg-slate-800/60' : ''}>
+                      {row.slice(0, 6).map((cell, j) => (
+                        <td key={j} className="px-3 py-2 border-b border-slate-800 text-slate-300 max-w-[160px] truncate">
+                          {cell?.toString() || <span className="text-slate-600">—</span>}
+                        </td>
+                      ))}
+                      {row.length > 6 && <td className="px-3 py-2 text-slate-500">+{row.length - 6} colunas</td>}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {/* Divider */}
+        {!file && (
+          <>
+            <div className="flex items-center gap-3 my-4">
+              <div className="flex-1 h-px bg-slate-800" />
+              <span className="text-xs text-slate-500 font-medium">ou cole os dados manualmente</span>
+              <div className="flex-1 h-px bg-slate-800" />
+            </div>
+
+            {/* Textarea */}
+            <div className="mb-4">
+              <textarea
+                value={text}
+                onChange={(e) => setText(e.target.value)}
+                placeholder={`pergunta\topção A\texplicação A\topção B\texplicação B\topção C\texplicação C\topção D\texplicação D\tresposta correta`}
+                rows={8}
+                className="w-full bg-slate-900 border border-slate-700 text-slate-200 placeholder-slate-600 rounded-xl px-4 py-3 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent resize-none"
+              />
+              <p className="text-xs text-slate-500 mt-1.5">
+                {text.trim() ? `${text.trim().split('\n').filter(Boolean).length} linha(s)` : 'Vazio'}
+              </p>
+            </div>
+          </>
+        )}
 
         {/* Feedback */}
         {result && (
           <div className="flex items-center gap-2 bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 rounded-xl px-4 py-3 text-sm mb-4">
             <CheckCircle size={16} />
-            <span>{result.success} questão(ões) importada(s) com sucesso{result.errors > 0 ? ` • ${result.errors} ignorada(s)` : ''}</span>
+            <span>{result.success} questão(ões) importada(s){result.errors > 0 ? ` • ${result.errors} ignorada(s)` : ''}</span>
           </div>
         )}
         {error && (
@@ -143,15 +263,12 @@ export default function ImportQuestionsPage() {
 
         {/* Buttons */}
         <div className="flex gap-3">
-          <Link
-            href={`/notebooks/${id}`}
-            className="flex-1 text-center bg-slate-800 hover:bg-slate-700 text-slate-300 py-3 rounded-xl text-sm font-medium transition-colors"
-          >
+          <Link href={`/notebooks/${id}`} className="flex-1 text-center bg-slate-800 hover:bg-slate-700 text-slate-300 py-3 rounded-xl text-sm font-medium transition-colors">
             Cancelar
           </Link>
           <button
             onClick={handleImport}
-            disabled={!text.trim() || importing}
+            disabled={!hasData || importing}
             className="flex-1 flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed text-white py-3 rounded-xl text-sm font-medium transition-colors"
           >
             {importing ? (
