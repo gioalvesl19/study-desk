@@ -9,9 +9,29 @@ export interface Notebook {
   flashcard_count?: number
 }
 
+export interface Topic {
+  id: string
+  notebook_id: string
+  name: string
+  created_at: string
+  subtopic_count?: number
+  question_count?: number
+  flashcard_count?: number
+}
+
+export interface Subtopic {
+  id: string
+  topic_id: string
+  name: string
+  created_at: string
+  question_count?: number
+  flashcard_count?: number
+}
+
 export interface Question {
   id: string
   notebook_id: string
+  subtopic_id: string | null
   question: string
   option_a: string | null
   explanation_a: string | null
@@ -30,6 +50,7 @@ export interface Question {
 export interface Flashcard {
   id: string
   notebook_id: string
+  subtopic_id: string | null
   question: string
   answer: string
   created_at: string
