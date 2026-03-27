@@ -3,7 +3,8 @@
 import { useEffect, useState, Suspense } from 'react'
 import { supabase } from '@/lib/supabase'
 import { Flashcard } from '@/lib/types'
-import { ArrowLeft, RotateCcw, ChevronLeft, ChevronRight, CheckCheck } from 'lucide-react'
+import { loadStats, saveStats, getLevelInfo, touchStreak } from '@/lib/game'
+import { ArrowLeft, RotateCcw, ChevronLeft, ChevronRight, CheckCheck, Zap } from 'lucide-react'
 import Link from 'next/link'
 import { useParams, useSearchParams } from 'next/navigation'
 
@@ -20,6 +21,8 @@ function FlashcardsContent() {
   const [scopeLabel, setScopeLabel] = useState('')
   const [backHref, setBackHref] = useState(`/notebooks/${id}`)
   const [finished, setFinished] = useState(false)
+  const [knownCount, setKnownCount] = useState(0)
+  const [sessionXP, setSessionXP] = useState(0)
 
   useEffect(() => { fetchData() }, [id, subtopicId, topicId])
 
@@ -52,8 +55,23 @@ function FlashcardsContent() {
     setLoading(false)
   }
 
-  function shuffle<T>(arr: T[]): T[] {
-    return [...arr].sort(() => Math.random() - 0.5)
+  function shuffle<T>(arr: T[]): T[] { return [...arr].sort(() => Math.random() - 0.5) }
+
+  function answerCard(known: boolean) {
+    if (known) {
+      const xp = 5
+      setKnownCount((k) => k + 1)
+      setSessionXP((s) => s + xp)
+      const stats = touchStreak(loadStats())
+      stats.xp += xp
+      stats.flashcardsDone += 1
+      saveStats(stats)
+    }
+    setFlipped(false)
+    setTimeout(() => {
+      if (current + 1 >= cards.length) setFinished(true)
+      else setCurrent((c) => c + 1)
+    }, 200)
   }
 
   function prev() {
@@ -61,114 +79,151 @@ function FlashcardsContent() {
     setTimeout(() => setCurrent((c) => Math.max(0, c - 1)), 150)
   }
 
-  function next() {
-    setFlipped(false)
-    setTimeout(() => {
-      if (current + 1 >= cards.length) setFinished(true)
-      else setCurrent((c) => c + 1)
-    }, 150)
-  }
-
   function restart() {
-    setCards(shuffle(cards))
-    setCurrent(0); setFlipped(false); setFinished(false)
+    setCards(shuffle(cards)); setCurrent(0); setFlipped(false); setFinished(false); setKnownCount(0); setSessionXP(0)
   }
 
   if (loading) return (
-    <div className="min-h-screen bg-slate-950 flex items-center justify-center">
-      <div className="w-8 h-8 border-2 border-purple-500 border-t-transparent rounded-full animate-spin" />
+    <div className="min-h-screen bg-black flex items-center justify-center">
+      <div className="w-7 h-7 border-2 border-white/20 border-t-white rounded-full animate-spin" />
     </div>
   )
 
   if (cards.length === 0) return (
-    <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-4">
-      <div className="text-center max-w-sm">
-        <div className="text-5xl mb-4">🃏</div>
-        <h2 className="text-xl font-semibold text-white mb-2">Nenhum flashcard</h2>
-        <p className="text-slate-400 mb-6">Importe flashcards para este subtópico primeiro.</p>
-        <Link href={backHref} className="bg-purple-600 hover:bg-purple-500 text-white px-5 py-2.5 rounded-xl text-sm font-medium transition-colors">
-          Voltar
-        </Link>
-      </div>
+    <div className="min-h-screen bg-black flex flex-col items-center justify-center p-4">
+      <div className="text-5xl mb-4">🃏</div>
+      <h2 className="text-xl font-bold text-white mb-2">Nenhum flashcard</h2>
+      <p className="text-white/40 mb-6 text-sm">Importe flashcards para este subtópico primeiro.</p>
+      <Link href={backHref} className="bg-white hover:bg-white/90 text-black px-5 py-2.5 rounded-xl text-sm font-bold transition-all">Voltar</Link>
     </div>
   )
 
-  if (finished) return (
-    <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-4">
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-8 max-w-sm w-full text-center">
-        <div className="w-16 h-16 rounded-full bg-purple-500/20 flex items-center justify-center mx-auto mb-4">
-          <CheckCheck size={32} className="text-purple-400" />
-        </div>
-        <h2 className="text-2xl font-bold text-white mb-1">Revisão concluída!</h2>
-        <p className="text-slate-400 mb-2">{scopeLabel}</p>
-        <p className="text-slate-500 text-sm mb-6">{cards.length} flashcard{cards.length !== 1 ? 's' : ''} revisado{cards.length !== 1 ? 's' : ''}</p>
-        <div className="flex gap-3">
-          <Link href={backHref} className="flex-1 bg-slate-800 hover:bg-slate-700 text-slate-200 py-2.5 rounded-xl text-sm font-medium transition-colors text-center">
-            Voltar
-          </Link>
-          <button onClick={restart} className="flex-1 flex items-center justify-center gap-2 bg-purple-600 hover:bg-purple-500 text-white py-2.5 rounded-xl text-sm font-medium transition-colors">
-            <RotateCcw size={15} /> Refazer
-          </button>
+  if (finished) {
+    const pct = knownCount > 0 ? Math.round((knownCount / cards.length) * 100) : 0
+    const stats = loadStats()
+    const levelInfo = getLevelInfo(stats.xp)
+    return (
+      <div className="min-h-screen bg-black flex flex-col items-center justify-center p-4">
+        <div className="bg-white/[0.04] border border-white/10 rounded-2xl p-8 max-w-sm w-full text-center glow-white-sm animate-fade-up">
+          <div className="text-4xl mb-4">🃏</div>
+          <h2 className="text-2xl font-black text-white mb-1">Revisão concluída!</h2>
+          <p className="text-white/40 text-sm mb-5">{scopeLabel}</p>
+
+          <div className="grid grid-cols-3 gap-2 mb-5">
+            {[
+              { label: 'Sabia', value: knownCount, icon: '✓' },
+              { label: 'XP ganho', value: `+${sessionXP}`, icon: '⚡' },
+              { label: 'Nível', value: levelInfo.level, icon: '🎖️' },
+            ].map((s) => (
+              <div key={s.label} className="bg-white/5 border border-white/8 rounded-xl p-3">
+                <p className="text-base mb-0.5">{s.icon}</p>
+                <p className="text-base font-bold text-white">{s.value}</p>
+                <p className="text-xs text-white/30">{s.label}</p>
+              </div>
+            ))}
+          </div>
+
+          <div className="w-full h-1.5 bg-white/8 rounded-full overflow-hidden mb-5">
+            <div className="h-full bg-white rounded-full" style={{ width: `${pct}%` }} />
+          </div>
+
+          <div className="flex gap-3">
+            <Link href={backHref} className="flex-1 text-center bg-white/6 hover:bg-white/10 border border-white/10 text-white py-3 rounded-xl text-sm font-medium transition-all">
+              Voltar
+            </Link>
+            <button onClick={restart} className="flex-1 flex items-center justify-center gap-2 bg-white hover:bg-white/90 text-black py-3 rounded-xl text-sm font-bold transition-all">
+              <RotateCcw size={14} /> Refazer
+            </button>
+          </div>
         </div>
       </div>
-    </div>
-  )
+    )
+  }
 
   const card = cards[current]
   const progress = ((current + 1) / cards.length) * 100
 
   return (
-    <div className="min-h-screen bg-slate-950 flex flex-col">
-      <header className="border-b border-slate-800 bg-slate-900/80 backdrop-blur-sm sticky top-0 z-10">
-        <div className="max-w-2xl mx-auto px-4 py-3 flex items-center gap-3">
-          <Link href={backHref} className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors">
-            <ArrowLeft size={18} />
-          </Link>
-          <div className="flex-1">
-            <div className="flex items-center justify-between text-xs text-slate-400 mb-1.5">
-              <span className="truncate max-w-[180px]">{scopeLabel}</span>
-              <span>{current + 1} / {cards.length}</span>
+    <div className="min-h-screen bg-black flex flex-col">
+      <header className="border-b border-white/8 bg-black/90 backdrop-blur-xl sticky top-0 z-10">
+        <div className="max-w-2xl mx-auto px-4 py-3">
+          <div className="flex items-center gap-3 mb-2.5">
+            <Link href={backHref} className="p-1.5 text-white/30 hover:text-white hover:bg-white/8 rounded-lg transition-all">
+              <ArrowLeft size={17} />
+            </Link>
+            <div className="flex-1 flex items-center justify-between">
+              <span className="text-xs text-white/40 truncate max-w-[150px]">{scopeLabel}</span>
+              <div className="flex items-center gap-3">
+                <span className="flex items-center gap-1 text-xs text-white/40">
+                  <Zap size={11} /> +{sessionXP} XP
+                </span>
+                <span className="text-xs text-white/40 font-mono">{current + 1}/{cards.length}</span>
+              </div>
             </div>
-            <div className="w-full bg-slate-800 rounded-full h-1.5">
-              <div className="h-1.5 rounded-full bg-purple-500 transition-all duration-300" style={{ width: `${progress}%` }} />
-            </div>
+          </div>
+          <div className="w-full h-1 bg-white/8 rounded-full overflow-hidden">
+            <div className="h-full bg-white rounded-full transition-all duration-400" style={{ width: `${progress}%` }} />
           </div>
         </div>
       </header>
 
-      <main className="flex-1 flex flex-col items-center justify-center max-w-2xl mx-auto w-full px-4 py-8">
-        <p className="text-sm text-slate-400 mb-6 text-center">Toque no card para ver a resposta</p>
-        <div className="flip-card w-full cursor-pointer select-none" style={{ height: '300px' }} onClick={() => setFlipped((f) => !f)}>
+      <main className="flex-1 flex flex-col items-center justify-center max-w-2xl mx-auto w-full px-4 py-6">
+        <p className="text-xs text-white/30 mb-5 text-center uppercase tracking-widest">Toque para revelar</p>
+
+        {/* Flip card */}
+        <div className="flip-card w-full cursor-pointer select-none mb-6" style={{ height: '280px' }} onClick={() => setFlipped((f) => !f)}>
           <div className={`flip-card-inner ${flipped ? 'flipped' : ''}`}>
-            <div className="flip-card-front bg-slate-900 border border-slate-700 flex flex-col items-center justify-center p-8">
-              <span className="text-xs font-medium text-purple-400 uppercase tracking-wider mb-4">Pergunta</span>
-              <p className="text-white text-lg font-medium text-center leading-relaxed">{card.question}</p>
-              <div className="absolute bottom-4 right-4 w-8 h-8 rounded-full bg-purple-500/20 flex items-center justify-center">
-                <span className="text-purple-400 text-xs">→</span>
-              </div>
+            {/* Front */}
+            <div className="flip-card-front bg-white/[0.04] border border-white/10 flex flex-col items-center justify-center p-8 hover:border-white/20 transition-all glow-white-sm">
+              <span className="text-xs font-medium text-white/30 uppercase tracking-widest mb-4">Pergunta</span>
+              <p className="text-white text-lg font-bold text-center leading-relaxed">{card.question}</p>
+              <span className="absolute bottom-4 text-white/20 text-xs">toque →</span>
             </div>
-            <div className="flip-card-back bg-gradient-to-br from-purple-900/40 to-indigo-900/40 border border-purple-700/50 flex flex-col items-center justify-center p-8">
-              <span className="text-xs font-medium text-purple-300 uppercase tracking-wider mb-4">Resposta</span>
-              <p className="text-white text-base text-center leading-relaxed">{card.answer}</p>
+            {/* Back */}
+            <div className="flip-card-back bg-white flex flex-col items-center justify-center p-8 glow-white-lg">
+              <span className="text-xs font-medium text-black/40 uppercase tracking-widest mb-4">Resposta</span>
+              <p className="text-black text-lg font-bold text-center leading-relaxed">{card.answer}</p>
             </div>
           </div>
         </div>
-        <div className="flex items-center gap-4 mt-8">
-          <button onClick={prev} disabled={current === 0} className="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 disabled:opacity-30 disabled:cursor-not-allowed text-slate-300 px-5 py-2.5 rounded-xl text-sm font-medium transition-colors">
-            <ChevronLeft size={16} /> Anterior
-          </button>
-          <button onClick={() => setFlipped((f) => !f)} className="bg-slate-800 hover:bg-slate-700 text-slate-300 px-4 py-2.5 rounded-xl text-sm font-medium transition-colors">
-            Virar
-          </button>
-          <button onClick={next} className="flex items-center gap-2 bg-purple-600 hover:bg-purple-500 text-white px-5 py-2.5 rounded-xl text-sm font-medium transition-colors">
-            {current + 1 >= cards.length ? 'Concluir' : 'Próximo'} <ChevronRight size={16} />
-          </button>
-        </div>
+
+        {/* Action buttons */}
+        {flipped ? (
+          <div className="flex gap-3 w-full">
+            <button onClick={() => answerCard(false)}
+              className="flex-1 flex items-center justify-center gap-2 bg-white/5 hover:bg-white/10 border border-white/10 hover:border-white/20 text-white/60 py-3.5 rounded-xl text-sm font-semibold transition-all">
+              ✗ Não sabia
+            </button>
+            <button onClick={() => answerCard(true)}
+              className="flex-1 flex items-center justify-center gap-2 bg-white hover:bg-white/90 text-black py-3.5 rounded-xl text-sm font-bold transition-all glow-white-sm">
+              ✓ Sabia! +5 XP
+            </button>
+          </div>
+        ) : (
+          <div className="flex items-center gap-3">
+            <button onClick={prev} disabled={current === 0}
+              className="flex items-center gap-2 bg-white/5 hover:bg-white/8 disabled:opacity-20 border border-white/8 text-white/50 px-5 py-2.5 rounded-xl text-sm font-medium transition-all">
+              <ChevronLeft size={15} /> Anterior
+            </button>
+            <button onClick={() => setFlipped(true)}
+              className="bg-white/8 hover:bg-white/12 border border-white/10 text-white px-5 py-2.5 rounded-xl text-sm font-medium transition-all">
+              Revelar
+            </button>
+            <button onClick={() => { setFlipped(false); setTimeout(() => { if (current + 1 >= cards.length) setFinished(true); else setCurrent(c => c + 1) }, 150) }}
+              className="flex items-center gap-2 bg-white/8 hover:bg-white/12 border border-white/10 text-white px-5 py-2.5 rounded-xl text-sm font-medium transition-all">
+              Pular <ChevronRight size={15} />
+            </button>
+          </div>
+        )}
       </main>
     </div>
   )
 }
 
 export default function FlashcardsPage() {
-  return <Suspense fallback={<div className="min-h-screen bg-slate-950 flex items-center justify-center"><div className="w-8 h-8 border-2 border-purple-500 border-t-transparent rounded-full animate-spin" /></div>}><FlashcardsContent /></Suspense>
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-black flex items-center justify-center"><div className="w-7 h-7 border-2 border-white/20 border-t-white rounded-full animate-spin" /></div>}>
+      <FlashcardsContent />
+    </Suspense>
+  )
 }

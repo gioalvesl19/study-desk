@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { Notebook, Topic, Subtopic } from '@/lib/types'
-import { ArrowLeft, ChevronRight, HelpCircle, CreditCard, Upload } from 'lucide-react'
+import { ArrowLeft, ChevronRight, HelpCircle, CreditCard, Upload, Zap, Target } from 'lucide-react'
 import Link from 'next/link'
 import { useParams } from 'next/navigation'
 
@@ -29,7 +29,6 @@ export default function SubtopicPage() {
     setTopic(topicRes.data as Topic | null)
     setSubtopic(subRes.data as Subtopic | null)
 
-    // Get accuracy
     const { data: qIds } = await supabase.from('questions').select('id').eq('subtopic_id', subtopicId)
     let attempts = 0, correct = 0
     if (qIds && qIds.length > 0) {
@@ -42,36 +41,34 @@ export default function SubtopicPage() {
   }
 
   if (loading) return (
-    <div className="min-h-screen bg-slate-950 flex items-center justify-center">
-      <div className="w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
+    <div className="min-h-screen bg-black flex items-center justify-center">
+      <div className="w-7 h-7 border-2 border-white/20 border-t-white rounded-full animate-spin" />
     </div>
   )
 
   const accuracy = stats.attempts > 0 ? Math.round((stats.correct / stats.attempts) * 100) : null
-  const color = notebook?.color ?? '#6366f1'
 
   return (
-    <div className="min-h-screen bg-slate-950">
-      <header className="border-b border-slate-800 bg-slate-900/80 backdrop-blur-sm sticky top-0 z-10">
+    <div className="min-h-screen bg-black">
+      <header className="border-b border-white/8 bg-black/80 backdrop-blur-xl sticky top-0 z-10">
         <div className="max-w-4xl mx-auto px-4 py-3">
-          {/* Breadcrumb */}
-          <div className="flex items-center gap-1.5 text-xs text-slate-500 mb-2 flex-wrap">
-            <Link href="/" className="hover:text-slate-300 transition-colors">Cadernos</Link>
-            <ChevronRight size={12} />
-            <Link href={`/notebooks/${id}`} className="hover:text-slate-300 transition-colors truncate max-w-[100px]">{notebook?.name}</Link>
-            <ChevronRight size={12} />
-            <Link href={`/notebooks/${id}/topics/${topicId}`} className="hover:text-slate-300 transition-colors truncate max-w-[100px]">{topic?.name}</Link>
-            <ChevronRight size={12} />
-            <span className="text-slate-300 truncate max-w-[100px]">{subtopic?.name}</span>
+          <div className="flex items-center gap-1.5 text-xs text-white/25 mb-2 flex-wrap">
+            <Link href="/" className="hover:text-white/50 transition-colors">Cadernos</Link>
+            <ChevronRight size={11} />
+            <Link href={`/notebooks/${id}`} className="hover:text-white/50 transition-colors truncate max-w-[80px]">{notebook?.name}</Link>
+            <ChevronRight size={11} />
+            <Link href={`/notebooks/${id}/topics/${topicId}`} className="hover:text-white/50 transition-colors truncate max-w-[80px]">{topic?.name}</Link>
+            <ChevronRight size={11} />
+            <span className="text-white/50 truncate max-w-[80px]">{subtopic?.name}</span>
           </div>
           <div className="flex items-center gap-3">
-            <Link href={`/notebooks/${id}/topics/${topicId}`} className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors">
-              <ArrowLeft size={18} />
+            <Link href={`/notebooks/${id}/topics/${topicId}`} className="p-1.5 text-white/30 hover:text-white hover:bg-white/8 rounded-lg transition-all">
+              <ArrowLeft size={17} />
             </Link>
-            <div className="w-9 h-9 rounded-xl flex items-center justify-center text-lg flex-shrink-0" style={{ backgroundColor: color + '25' }}>
+            <div className="w-9 h-9 rounded-xl bg-white/8 border border-white/10 flex items-center justify-center text-lg flex-shrink-0">
               {notebook?.icon}
             </div>
-            <h1 className="text-base font-semibold text-white truncate">{subtopic?.name}</h1>
+            <h1 className="text-base font-bold text-white truncate">{subtopic?.name}</h1>
           </div>
         </div>
       </header>
@@ -80,81 +77,69 @@ export default function SubtopicPage() {
         {/* Stats */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-8">
           {[
-            { label: 'Questões', value: stats.questions, color: 'text-indigo-400', bg: 'bg-indigo-500/10' },
-            { label: 'Flashcards', value: stats.flashcards, color: 'text-purple-400', bg: 'bg-purple-500/10' },
-            { label: 'Respostas', value: stats.attempts, color: 'text-blue-400', bg: 'bg-blue-500/10' },
-            { label: 'Acertos', value: accuracy !== null ? `${accuracy}%` : '—', color: 'text-emerald-400', bg: 'bg-emerald-500/10' },
+            { label: 'Questões', value: stats.questions, icon: '❓' },
+            { label: 'Flashcards', value: stats.flashcards, icon: '🃏' },
+            { label: 'Respostas', value: stats.attempts, icon: '📝' },
+            { label: 'Acertos', value: accuracy !== null ? `${accuracy}%` : '—', icon: '🎯' },
           ].map((s) => (
-            <div key={s.label} className={`${s.bg} border border-slate-800 rounded-2xl p-4 text-center`}>
-              <p className={`text-2xl font-bold ${s.color}`}>{s.value}</p>
-              <p className="text-xs text-slate-400 mt-1">{s.label}</p>
+            <div key={s.label} className="bg-white/[0.04] border border-white/8 rounded-2xl p-4 text-center">
+              <p className="text-lg mb-1">{s.icon}</p>
+              <p className="text-2xl font-black text-white">{s.value}</p>
+              <p className="text-xs text-white/30 mt-1">{s.label}</p>
             </div>
           ))}
         </div>
 
         {/* Study */}
-        <div className="space-y-3 mb-8">
-          <h2 className="text-sm font-medium text-slate-400 uppercase tracking-wider mb-4">Estudar</h2>
-
-          <Link
-            href={`/notebooks/${id}/questions?subtopicId=${subtopicId}`}
-            className="flex items-center gap-4 bg-slate-900 hover:bg-slate-800 border border-slate-800 hover:border-slate-700 rounded-2xl p-5 transition-all group"
-          >
-            <div className="w-12 h-12 rounded-xl bg-indigo-500/15 flex items-center justify-center">
-              <HelpCircle size={22} className="text-indigo-400" />
+        <div className="space-y-2.5 mb-8">
+          <h2 className="text-xs font-medium text-white/30 uppercase tracking-widest mb-3">Estudar</h2>
+          <Link href={`/notebooks/${id}/questions?subtopicId=${subtopicId}`}
+            className="flex items-center gap-4 bg-white hover:bg-white/90 rounded-2xl p-5 transition-all group glow-white-sm">
+            <div className="w-11 h-11 rounded-xl bg-black/10 flex items-center justify-center">
+              <HelpCircle size={20} className="text-black" />
             </div>
             <div className="flex-1">
-              <h3 className="font-semibold text-white">Responder Questões</h3>
-              <p className="text-sm text-slate-400">{stats.questions} questões disponíveis</p>
+              <h3 className="font-bold text-black">Responder Questões</h3>
+              <p className="text-sm text-black/50">{stats.questions} questões · ganhe XP</p>
             </div>
-            <ArrowLeft size={16} className="text-slate-500 rotate-180 group-hover:text-indigo-400 transition-colors" />
+            <ChevronRight size={16} className="text-black/40" />
           </Link>
 
-          <Link
-            href={`/notebooks/${id}/flashcards?subtopicId=${subtopicId}`}
-            className="flex items-center gap-4 bg-slate-900 hover:bg-slate-800 border border-slate-800 hover:border-slate-700 rounded-2xl p-5 transition-all group"
-          >
-            <div className="w-12 h-12 rounded-xl bg-purple-500/15 flex items-center justify-center">
-              <CreditCard size={22} className="text-purple-400" />
+          <Link href={`/notebooks/${id}/flashcards?subtopicId=${subtopicId}`}
+            className="flex items-center gap-4 bg-white/[0.05] hover:bg-white/[0.08] border border-white/10 hover:border-white/20 rounded-2xl p-5 transition-all group">
+            <div className="w-11 h-11 rounded-xl bg-white/8 flex items-center justify-center">
+              <CreditCard size={20} className="text-white/70" />
             </div>
             <div className="flex-1">
               <h3 className="font-semibold text-white">Revisar Flashcards</h3>
-              <p className="text-sm text-slate-400">{stats.flashcards} flashcards disponíveis</p>
+              <p className="text-sm text-white/40">{stats.flashcards} cards · +5 XP cada</p>
             </div>
-            <ArrowLeft size={16} className="text-slate-500 rotate-180 group-hover:text-purple-400 transition-colors" />
+            <ChevronRight size={16} className="text-white/20 group-hover:text-white/50 transition-colors" />
           </Link>
         </div>
 
         {/* Import */}
-        <div className="space-y-3">
-          <h2 className="text-sm font-medium text-slate-400 uppercase tracking-wider mb-4">Importar Conteúdo</h2>
-
-          <Link
-            href={`/notebooks/${id}/questions/import?subtopicId=${subtopicId}`}
-            className="flex items-center gap-4 bg-slate-900 hover:bg-slate-800 border border-slate-800 hover:border-slate-700 rounded-2xl p-5 transition-all group"
-          >
-            <div className="w-12 h-12 rounded-xl bg-blue-500/15 flex items-center justify-center">
-              <Upload size={22} className="text-blue-400" />
+        <div className="space-y-2.5">
+          <h2 className="text-xs font-medium text-white/30 uppercase tracking-widest mb-3">Importar Conteúdo</h2>
+          <Link href={`/notebooks/${id}/questions/import?subtopicId=${subtopicId}`}
+            className="flex items-center gap-4 bg-white/[0.03] hover:bg-white/[0.06] border border-dashed border-white/10 hover:border-white/20 rounded-2xl p-4 transition-all group">
+            <div className="w-10 h-10 rounded-xl bg-white/5 flex items-center justify-center">
+              <Upload size={17} className="text-white/40 group-hover:text-white/60 transition-colors" />
             </div>
             <div className="flex-1">
-              <h3 className="font-semibold text-white">Importar Questões</h3>
-              <p className="text-sm text-slate-400">Excel, CSV ou tabela</p>
+              <p className="text-sm font-medium text-white/60 group-hover:text-white/80 transition-colors">Importar Questões</p>
+              <p className="text-xs text-white/25">Excel, CSV ou tabela</p>
             </div>
-            <ArrowLeft size={16} className="text-slate-500 rotate-180 group-hover:text-blue-400 transition-colors" />
           </Link>
-
-          <Link
-            href={`/notebooks/${id}/flashcards/import?subtopicId=${subtopicId}`}
-            className="flex items-center gap-4 bg-slate-900 hover:bg-slate-800 border border-slate-800 hover:border-slate-700 rounded-2xl p-5 transition-all group"
-          >
-            <div className="w-12 h-12 rounded-xl bg-pink-500/15 flex items-center justify-center">
-              <Upload size={22} className="text-pink-400" />
+          <Link href={`/notebooks/${id}/flashcards/import?subtopicId=${subtopicId}`}
+            className="flex items-center gap-4 bg-white/[0.03] hover:bg-white/[0.06] border border-dashed border-white/10 hover:border-white/20 rounded-2xl p-4 transition-all group">
+            <div className="w-10 h-10 rounded-xl bg-white/5 flex items-center justify-center">
+              <Upload size={17} className="text-white/40 group-hover:text-white/60 transition-colors" />
             </div>
             <div className="flex-1">
-              <h3 className="font-semibold text-white">Importar Flashcards</h3>
-              <p className="text-sm text-slate-400">Excel, CSV ou tabela</p>
+              <p className="text-sm font-medium text-white/60 group-hover:text-white/80 transition-colors">Importar Flashcards</p>
+              <p className="text-xs text-white/25">Excel, CSV ou tabela</p>
             </div>
-            <ArrowLeft size={16} className="text-slate-500 rotate-180 group-hover:text-pink-400 transition-colors" />
           </Link>
         </div>
       </main>

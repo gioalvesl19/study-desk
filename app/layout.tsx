@@ -2,18 +2,14 @@ import type { Metadata } from 'next'
 import './globals.css'
 
 export const metadata: Metadata = {
-  title: 'StudyDesk — Sistema de Estudos',
-  description: 'Organize seus estudos com cadernos, questões e flashcards',
+  title: 'StudyDesk',
+  description: 'Estude como um jogo. Cadernos, questões e flashcards.',
 }
 
-export default function RootLayout({
-  children,
-}: {
-  children: React.ReactNode
-}) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="pt-BR">
-      <body className="bg-slate-950 text-slate-100 min-h-screen font-sans antialiased">
+      <body className="bg-black text-white min-h-screen font-sans antialiased">
         {children}
       </body>
     </html>
